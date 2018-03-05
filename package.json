@@ -10,7 +10,9 @@
   "license": "MIT",
   "devDependencies": {},
   "dependencies": {
+    "globby": "^8.0.1",
     "gray-matter": "^3.1.1",
+    "gulp-util": "^3.0.8",
     "handlebars": "^4.0.11",
     "i": "^0.3.6",
     "js-yaml": "^3.10.0",
