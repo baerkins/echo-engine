@@ -95,7 +95,8 @@ let echoData = {
   layouts       : {}, // Layouts
   guidePages    : {},
   pages         : {},
-  sitedata      : {}
+  sitedata      : {},
+  partialData   : {}
 };
 
 
@@ -119,6 +120,15 @@ const getName = function (filePath, preserveNumbers) {
   let name = Path.basename(filePath, Path.extname(filePath)).replace(/\s/g, '-');
   return (preserveNumbers) ? name : name.replace(/^[0-9|\.\-]+/, '');
 };
+
+
+
+
+Handlebars.registerHelper('json', function(context) {
+  return JSON.stringify(context, null, 2);
+});
+
+
 
 
 /**
@@ -152,15 +162,53 @@ const wrapPage = function (page, layout) {
 	return layout.replace(/\{\%\s?body\s?\%\}/, page);
 };
 
+/**
+ * Build the template context by merging context-specific data with assembly data
+ * @param  {Object} data
+ * @return {Object}
+ */
+const buildContext = function (data, hash) {
+
+	// set keys to whatever is defined
+	var partialItems = {
+    partials: {}
+  };
+  partialItems.partials[echoOpts.keys.common] = echoData.partials.common;
+  partialItems.partials[echoOpts.keys.blocks] = echoData.partials.blocks;
+  partialItems.partials[echoOpts.keys.lib] = echoData.partials.lib;
+
+	var views = {};
+  views[echoOpts.keys.views.guides] = echoData.guidePages;
+  views[echoOpts.keys.views.pages] = echoData.pages;
+
+	// var docs = {};
+	// docs[options.keys.docs] = assembly.docs;
+
+	return _.assign({}, data, echoData, hash);
+
+};
+
 
 const buildHTML = (path, data) => {
   const defaultLayout = echoData.layouts[echoOpts.guideLayout],
         layout     = data.data.layout,
         pageLayout = typeof layout !== 'undefined' ? echoData.layouts[data.data.layout] : defaultLayout,
         content    = wrapPage(data.html, pageLayout),
-        template   = Handlebars.compile(content);
+        context    = buildContext(data.data);
+        template   = Handlebars.compile(content),
 
-  fs.writeFileSync(path, Pretty(template(content), {ocd: true}));
+  fs.writeFileSync(path, Pretty(template(context), {ocd: true}));
+}
+
+const replaceMatter = (matter, content) => {
+
+  Object.entries(matter).forEach(([val, key]) => {
+    var regex = new RegExp('(\\{\\{[#\/]?)(\\s?' + val + '+?\\s?)(\\}\\})', 'g');
+    content = content.replace(regex, key);
+  });
+
+  return content;
+
 }
 
 
@@ -219,30 +267,18 @@ const parsePartials = () => {
     }
 
     // get info
-    var fileMatter = Matter.read(file);
+    const fileMatter = Matter.read(file);
 
     // trim whitespace from material content
-    var content = fileMatter.content.replace(/^(\s*(\r?\n|\r))+|(\s*(\r?\n|\r))+$/g, '');
+    let content = fileMatter.content.replace(/^(\s*(\r?\n|\r))+|(\s*(\r?\n|\r))+$/g, '');
 
     // get local file data in front matter
-    var localData = _.omit(fileMatter.data, 'notes');
+    const localData = _.omit(fileMatter.data, 'notes');
 
-    /**
-     * THIS REPLACE INVLOVES POINTING TO AN ID
-     notes: (fileMatter.data.notes) ? md.render(fileMatter.data.notes) : '', LOOK HERE!!
-     *
-     */
-    // replace local fields on the fly with name-spaced keys
-    // this allows partials to use local front-matter data
-    // only affects the compilation environment
+    echoData.partialData[partialID] = localData;
+
     // if (!_.isEmpty(localData)) {
-    //   _.forEach(localData, function (val, key) {
-    //     // {{field}} => {{material-name.field}}
-    //     var regex = new RegExp('(\\{\\{[#\/]?)(\\s?' + key + '+?\\s?)(\\}\\})', 'g');
-    //     content = content.replace(regex, function (match, p1, p2, p3) {
-    //       return p1 + id.replace(/\./g, '-') + '.' + p2.replace(/\s/g, '') + p3;
-    //     });
-    //   });
+    //   content = replaceMatter(localData, content);
     // }
 
     // register the partial
@@ -453,7 +489,12 @@ const parsePages = () => {
 
     const fileMatter = Matter.read(file);
     const fileData = _.omit(fileMatter.data, 'notes');
-    const content = fileMatter.content;
+
+    let content = fileMatter.content;
+
+    // if (!_.isEmpty(fileData)) {
+    //   content = replaceMatter(fileData, content);
+    // }
 
 
     // if this file is part of a collection
@@ -502,7 +543,7 @@ var parseData = () => {
   var files = Globby.sync(echoOpts.data, { nodir: true });
 
   // save content of each file
-  files.forEach(function (file) {
+  files.forEach( file => {
     var id = getName(file);
     var content = JSYaml.safeLoad(fs.readFileSync(file, 'utf-8'));
     echoData.sitedata[id] = content;
@@ -630,6 +671,22 @@ const buildGuideBlocks = () => {
   });
 };
 
+const buildIndex = () => {
+  const index = fs.readFileSync('./src/index.html', 'utf-8');
+  const fileMatter = Matter.read('./src/index.html');
+  const localData = _.omit(fileMatter.data, 'notes');
+
+  let content    = wrapPage(fileMatter.content, echoData.layouts[echoOpts.defaultLayout]);
+
+  if (!_.isEmpty(localData)) {
+    content = replaceMatter(localData, content);
+  }
+
+  const template = Handlebars.compile(content);
+
+  fs.writeFileSync(echoOpts.dist + Path.sep + 'index.html', Pretty(template(content), {ocd: true}));
+}
+
 
 
 /**
@@ -637,21 +694,11 @@ const buildGuideBlocks = () => {
  *
  */
 const buildEcho = () => {
-
   mkdirp.sync(echoOpts.dist);
-
   buildPages();
   buildGuidePages();
   buildGuideBlocks();
-
-  const index = fs.readFileSync('./src/index.html', 'utf-8');
-  // const fileMatter = Matter.read(index);
-  const content    = wrapPage(index, echoData.layouts[echoOpts.defaultLayout]),
-        template   = Handlebars.compile(content);
-
-  fs.writeFileSync(echoOpts.dist + Path.sep + 'index.html', Pretty(template(content), {ocd: true}));
-
-
+  buildIndex();
 }
 
 
