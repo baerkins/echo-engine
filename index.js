@@ -45,7 +45,7 @@ const echoDefaults = {
   guidePages: ["src/views/guide/**/*", "!src/views/guide/echo/**"],
 
   // Pages
-  pages: ["src/views/pages/*"],
+  pages: ["src/views/pages/**/*"],
 
   // Yaml Data
   data: ["src/data/*"],
@@ -57,6 +57,11 @@ const echoDefaults = {
   dist: "./dist",
 
   keys: {
+    partials: {
+      common: 'common',
+      blocks: 'blocks',
+      lib: 'lib'
+    },
     views: {
       guides: 'guides',
       echo: 'echo',
@@ -78,7 +83,7 @@ let echoData = {
   layouts       : {}, // Layouts
   guidePages    : {},
   pages         : {},
-  data          : {}
+  sitedata      : {}
 };
 
 
@@ -116,6 +121,16 @@ var toTitleCase = function (str) {
 };
 
 
+const slugify = (text) => {
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-')           // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
+    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+    .replace(/^-+/, '')             // Trim - from start of text
+    .replace(/-+$/, '');            // Trim - from end of text
+}
+
+
 
 
 
@@ -139,14 +154,18 @@ const parsePartials = () => {
     Path.normalize(echoOpts.partialsDir + echoOpts.partialLib)
   ];
 
+
   // Get all files that should be made into partials
   const files = Globby.sync(allPartials, {nodir: true, nosort: true});
+
+  console.log(files);
 
   files.forEach(function (file) {
 
     // Get filepath values
     const filepath = Path.normalize(Path.dirname(file)).replace(echoOpts.partialsDir, '').split(Path.sep);
     const stubs    = filepath.slice(1);
+    const parent   = filepath[0];
 
     // Top most folder or false
     let collection = stubs.length > 1 ? stubs.slice(-2, -1)[0] : stubs[0];
@@ -159,6 +178,14 @@ const parsePartials = () => {
     // Name of Partial
     const name = Path.basename(file, Path.extname(file));
     const id = subCollection ? subCollection + echoOpts.idDelimiter + name : name;
+
+    // Set slug for blocks
+    let partialSlug = false;
+    if ( parent === echoOpts.keys.partials.blocks) {
+      partialSlug = collection ? slugify(collection) + '/' : '';
+      partialSlug += subCollection ? slugify(subCollection) + '/' : '';
+      partialSlug += slugify(name);
+    }
 
     // get info
     var fileMatter = Matter.read(file);
@@ -177,56 +204,99 @@ const parsePartials = () => {
     // replace local fields on the fly with name-spaced keys
     // this allows partials to use local front-matter data
     // only affects the compilation environment
-    if (!_.isEmpty(localData)) {
-      _.forEach(localData, function (val, key) {
-        // {{field}} => {{material-name.field}}
-        var regex = new RegExp('(\\{\\{[#\/]?)(\\s?' + key + '+?\\s?)(\\}\\})', 'g');
-        content = content.replace(regex, function (match, p1, p2, p3) {
-          return p1 + id.replace(/\./g, '-') + '.' + p2.replace(/\s/g, '') + p3;
-        });
-      });
+    // if (!_.isEmpty(localData)) {
+    //   _.forEach(localData, function (val, key) {
+    //     // {{field}} => {{material-name.field}}
+    //     var regex = new RegExp('(\\{\\{[#\/]?)(\\s?' + key + '+?\\s?)(\\}\\})', 'g');
+    //     content = content.replace(regex, function (match, p1, p2, p3) {
+    //       return p1 + id.replace(/\./g, '-') + '.' + p2.replace(/\s/g, '') + p3;
+    //     });
+    //   });
+    // }
+
+    // register the partial
+    Handlebars.registerPartial(id, content);
+
+    if (parent === echoOpts.keys.partials.lib) {
+      return false;
     }
 
     /**
      * Store partial in the echoData object
      *
      */
-    let parent = filepath[0];
-    let dataPath = parent;
+    // let dataPath = parent;
+    let fileData = _.omit(fileMatter.data, 'notes');
     let partialData = {
-      partialID: id,
+      id: id,
+      name: name,
       html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
+      data: fileData,
+      slug: partialSlug
     };
 
     // Add echoData.partials object key with file base value
     if (!_.has(echoData.partials, parent)) {
-      echoData.partials[parent] = {};
+      echoData.partials[parent] = {
+        type: 'parent',
+        name: toTitleCase(parent),
+        slug: slugify(parent),
+        items: {}
+      };
     }
 
     if (collection) {
-      dataPath += '.' + collection;
+      if (!_.has(echoData.partials[parent].items, collection)) {
+        echoData.partials[parent].items[collection] = {
+          type: 'collection',
+          name: toTitleCase(collection),
+          slug: slugify(collection),
+          items: {}
+        };
+      }
     }
 
     if (subCollection) {
-      dataPath += '.' + subCollection;
+      if (!_.has(echoData.partials[parent].items[collection].items, subCollection)) {
+        echoData.partials[parent].items[collection].items[subCollection] = {
+          type: 'subcollection',
+          name: toTitleCase(collection),
+          slug: slugify(collection),
+          items: {}
+        };
+      }
+
+      echoData.partials[parent].items[collection].items[subCollection].items[id] = partialData;
+
+      return;
+
     }
 
-    dataPath += '.' + name;
+    if (collection) {
+      echoData.partials[parent].items[collection].items[id] = partialData;
+
+      return;
+    }
+
+
+    echoData.partials[parent].items[id] = partialData;
+
+    return;
+
+
+    // dataPath = partialData;
 
     // Add partial to echoData.partials
-    _.set(echoData.partials, dataPath, partialData);
+    // _.set(echoData.partials, dataPath, partialData);
 
-    // register the partial
-    Handlebars.registerPartial(id, content);
+
 
   });
 
-  // console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
+  console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
 
 }
-
-
 
 
 /**
@@ -256,7 +326,7 @@ const parseLayouts = () => {
 /**
  * Register layout includes has Handlebars partials
  */
-var parseGuideIncludes = function () {
+const parseGuideIncludes = () => {
 
   // get files
   var files = Globby.sync(echoOpts.guideIncludes, { nodir: true });
@@ -273,7 +343,7 @@ var parseGuideIncludes = function () {
 /**
  * Register layout includes has Handlebars partials
  */
-var parseGuideFiles = function () {
+const parseGuideFiles = () => {
 
   echoData.guidePages = {};
 
@@ -283,7 +353,7 @@ var parseGuideFiles = function () {
   files.forEach(function (file) {
     var id = getName(file);
 
-    console.log(Path.normalize(Path.dirname(file)));
+    // console.log(Path.normalize(Path.dirname(file)));
 
     // determine if view is part of a collection (subdir)
     var dirname = Path.normalize(Path.dirname(file)).split(Path.sep).pop();
@@ -311,10 +381,73 @@ var parseGuideFiles = function () {
     }
   });
 
-  console.log(util.inspect(echoData.guidePages, {
-      showHidden: false,
-      depth: null
-    }));
+  // console.log(util.inspect(echoData.guidePages, {
+  //     showHidden: false,
+  //     depth: null
+  //   }));
+
+};
+
+/**
+ * Register layout includes has Handlebars partials
+ */
+const parsePages = () => {
+
+  echoData.pages = {};
+  const pageKey = echoOpts.keys.views.pages;
+
+  echoData.pages[pageKey] = {
+    name: toTitleCase(pageKey),
+    slug: slugify(pageKey),
+    items: {}
+  };
+
+  // get files
+  var files = Globby.sync(echoOpts.pages, { nodir: true });
+
+  files.forEach(function (file) {
+    var id = getName(file);
+
+    // determine if view is part of a collection (subdir)
+    var dirname = Path.normalize(Path.dirname(file)).split(Path.sep).pop();
+    collection = (dirname !== echoOpts.keys.views.pages) ? dirname : '';
+    // collection = '';
+
+    const fileMatter = Matter.read(file);
+    const fileData = _.omit(fileMatter.data, 'notes');
+    const content = fileMatter.content;
+
+
+    // if this file is part of a collection
+    if (collection) {
+
+      // create collection if it doesn't exist
+      echoData.pages[collection] = echoData.pages[collection] || {
+        name: toTitleCase(collection),
+        slug: slugify(pageKey) + '/' + slugify(collection),
+        items: {}
+      };
+
+      // store view data
+      echoData.pages[collection].items[id] = {
+        name: toTitleCase(id),
+        data: fileData,
+        html: content
+      };
+
+    } else {
+      echoData.pages[pageKey].items[id] = {
+        name: toTitleCase(id),
+        data: fileData,
+        html: content
+      };
+    }
+  });
+
+  // console.log(util.inspect(echoData.pages, {
+  //   showHidden: false,
+  //   depth: null
+  // }));
 
 };
 
@@ -322,10 +455,10 @@ var parseGuideFiles = function () {
 /**
  * Parse data files and save JSON
  */
-var parseData = function () {
+var parseData = () => {
 
   // reset
-  echoData.data = {};
+  echoData.sitedata = {};
 
   // get files
   var files = Globby.sync(echoOpts.data, { nodir: true });
@@ -334,7 +467,7 @@ var parseData = function () {
   files.forEach(function (file) {
     var id = getName(file);
     var content = JSYaml.safeLoad(fs.readFileSync(file, 'utf-8'));
-    echoData.data[id] = content;
+    echoData.sitedata[id] = content;
   });
 
 };
@@ -356,20 +489,28 @@ var parseData = function () {
  *
  */
 const setup = userOptions => {
-        // merge user options with defaults
-        echoOpts = _.merge({}, echoDefaults, userOptions);
+  // merge user options with defaults
+  echoOpts = _.merge({}, echoDefaults, userOptions);
 
-        parsePartials(); // Register Partials
-        parseGuideIncludes(); // Register Guide Partials
-        parseLayouts();
-        parseData();
-        parseGuideFiles();
+  parsePartials(); // Register Partials
+  parseGuideIncludes(); // Register Guide Partials
+  parseLayouts();
+  parseData();
+  parseGuideFiles();
+  parsePages();
 
-        // setup steps
+  // setup steps
 
-        // parseViews();
-        // parseDocs();
-      };;
+  // console.log(util.inspect(echoData, {
+  //     showHidden: false,
+  //     depth: null
+  //   }));
+
+
+  fs.writeFile('echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
+  // parseViews();
+  // parseDocs();
+};
 
 
 /**
@@ -377,9 +518,8 @@ const setup = userOptions => {
  *
  */
 const buildEcho = () => {
-  // console.log('hi');
-
   mkdirp.sync(echoOpts.dist);
+
 
 }
 
