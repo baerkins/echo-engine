@@ -66,6 +66,11 @@ const echoDefaults = {
       guides: 'guides',
       echo: 'echo',
       pages: 'pages'
+    },
+    echo: {
+      collection: 'collection',
+      subcollection: 'subcollection',
+      parent: 'parent'
     }
   }
 };
@@ -239,7 +244,7 @@ const parsePartials = () => {
     // Add echoData.partials object key with file base value
     if (!_.has(echoData.partials, parent)) {
       echoData.partials[parent] = {
-        type: 'parent',
+        type: echoOpts.keys.echo.parent,
         name: toTitleCase(parent),
         slug: slugify(parent),
         items: {}
@@ -249,7 +254,7 @@ const parsePartials = () => {
     if (collection) {
       if (!_.has(echoData.partials[parent].items, collection)) {
         echoData.partials[parent].items[collection] = {
-          type: 'collection',
+          type: echoOpts.keys.echo.collection,
           name: toTitleCase(collection),
           slug: slugify(collection),
           items: {}
@@ -260,7 +265,7 @@ const parsePartials = () => {
     if (subCollection) {
       if (!_.has(echoData.partials[parent].items[collection].items, subCollection)) {
         echoData.partials[parent].items[collection].items[subCollection] = {
-          type: 'subcollection',
+          type: echoOpts.keys.echo.subcollection,
           name: toTitleCase(collection),
           slug: slugify(collection),
           items: {}
