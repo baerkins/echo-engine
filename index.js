@@ -6,6 +6,8 @@ const JSYaml = require('js-yaml');
 const Markdown = require('markdown-it')({ html: true, linkify: true });
 const mkdirp = require('mkdirp');
 const Globby = require('globby');
+const Beautify = require('beautify');
+const Pretty = require('pretty');
 
 // Node
 const Path = require('path');
@@ -38,6 +40,10 @@ const echoDefaults = {
   // Layouts Directory
   layouts: ["src/views/layouts/*"],
 
+  defaultLayout: "default",
+
+  guideLayout: "default",
+
   // Echo Guide Includes
   guideIncludes: ["src/views/guide/echo/*"],
 
@@ -60,10 +66,11 @@ const echoDefaults = {
     partials: {
       common: 'common',
       blocks: 'blocks',
-      lib: 'lib'
+      lib: 'lib',
+      blocksDestPath: 'blocks'
     },
     views: {
-      guides: 'guides',
+      guides: 'guide',
       echo: 'echo',
       pages: 'pages'
     },
@@ -135,6 +142,26 @@ const slugify = (text) => {
     .replace(/-+$/, '');            // Trim - from end of text
 }
 
+/**
+ * Insert the page into a layout
+ * @param  {String} page
+ * @param  {String} layout
+ * @return {String}
+ */
+const wrapPage = function (page, layout) {
+	return layout.replace(/\{\%\s?body\s?\%\}/, page);
+};
+
+
+const buildHTML = (path, data) => {
+  const defaultLayout = echoData.layouts[echoOpts.guideLayout],
+        layout     = data.data.layout,
+        pageLayout = typeof layout !== 'undefined' ? echoData.layouts[data.data.layout] : defaultLayout,
+        content    = wrapPage(data.html, pageLayout),
+        template   = Handlebars.compile(content);
+
+  fs.writeFileSync(path, Pretty(template(content), {ocd: true}));
+}
 
 
 
@@ -163,8 +190,6 @@ const parsePartials = () => {
   // Get all files that should be made into partials
   const files = Globby.sync(allPartials, {nodir: true, nosort: true});
 
-  console.log(files);
-
   files.forEach(function (file) {
 
     // Get filepath values
@@ -182,7 +207,8 @@ const parsePartials = () => {
 
     // Name of Partial
     const name = Path.basename(file, Path.extname(file));
-    const id = subCollection ? subCollection + echoOpts.idDelimiter + name : name;
+    const partialID = subCollection ? subCollection + echoOpts.idDelimiter + name : name;
+    const id = name;
 
     // Set slug for blocks
     let partialSlug = false;
@@ -220,7 +246,7 @@ const parsePartials = () => {
     // }
 
     // register the partial
-    Handlebars.registerPartial(id, content);
+    Handlebars.registerPartial(partialID, content);
 
     if (parent === echoOpts.keys.partials.lib) {
       return false;
@@ -234,6 +260,8 @@ const parsePartials = () => {
     let fileData = _.omit(fileMatter.data, 'notes');
     let partialData = {
       id: id,
+      partialID: partialID,
+      type: 'partial',
       name: name,
       html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
@@ -246,7 +274,7 @@ const parsePartials = () => {
       echoData.partials[parent] = {
         type: echoOpts.keys.echo.parent,
         name: toTitleCase(parent),
-        slug: slugify(parent),
+        id: slugify(parent),
         items: {}
       };
     }
@@ -256,7 +284,7 @@ const parsePartials = () => {
         echoData.partials[parent].items[collection] = {
           type: echoOpts.keys.echo.collection,
           name: toTitleCase(collection),
-          slug: slugify(collection),
+          id: slugify(collection),
           items: {}
         };
       }
@@ -266,8 +294,8 @@ const parsePartials = () => {
       if (!_.has(echoData.partials[parent].items[collection].items, subCollection)) {
         echoData.partials[parent].items[collection].items[subCollection] = {
           type: echoOpts.keys.echo.subcollection,
-          name: toTitleCase(collection),
-          slug: slugify(collection),
+          name: toTitleCase(subCollection),
+          id: slugify(subCollection),
           items: {}
         };
       }
@@ -299,7 +327,7 @@ const parsePartials = () => {
 
   });
 
-  console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
+  // console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
 
 }
 
@@ -313,7 +341,7 @@ const parseLayouts = () => {
   echoData.layouts = {};
 
   // get files
-  var files = Globby.sync(echoOpts.layouts, { nodir: true });
+  const files = Globby.sync(echoOpts.layouts, { nodir: true });
 
   // save content of each file
   files.forEach(function (file) {
@@ -353,19 +381,20 @@ const parseGuideFiles = () => {
   echoData.guidePages = {};
 
   // get files
-  var files = Globby.sync(echoOpts.guidePages, { nodir: true });
+  const files = Globby.sync(echoOpts.guidePages, { nodir: true });
 
   files.forEach(function (file) {
-    var id = getName(file);
+    const id = slugify(getName(file));
+    const content = fs.readFileSync(file, 'utf-8');
 
     // console.log(Path.normalize(Path.dirname(file)));
 
     // determine if view is part of a collection (subdir)
-    var dirname = Path.normalize(Path.dirname(file)).split(Path.sep).pop();
+    const dirname = Path.normalize(Path.dirname(file)).split(Path.sep).pop();
       collection = (dirname !== echoOpts.keys.views.guide) ? dirname : '';
       // collection = '';
 
-    var fileMatter = Matter(file),
+    const fileMatter = Matter(file),
       fileData = _.omit(fileMatter.data, 'notes');
 
     // if this file is part of a collection
@@ -374,13 +403,17 @@ const parseGuideFiles = () => {
       // create collection if it doesn't exist
       echoData.guidePages[collection] = echoData.guidePages[collection] || {
         name: toTitleCase(collection),
+        slug: slugify(collection),
         items: {}
       };
 
       // store view data
       echoData.guidePages[collection].items[id] = {
         name: toTitleCase(id),
-        data: fileData
+        notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
+        data: fileData,
+        slug: id,
+        html: content
       };
 
     }
@@ -429,7 +462,7 @@ const parsePages = () => {
       // create collection if it doesn't exist
       echoData.pages[collection] = echoData.pages[collection] || {
         name: toTitleCase(collection),
-        slug: slugify(pageKey) + '/' + slugify(collection),
+        slug: slugify(collection),
         items: {}
       };
 
@@ -518,12 +551,105 @@ const setup = userOptions => {
 };
 
 
+
+// Build Pages
+const buildPages = (baseDir) => {
+
+  const pages         = echoData.pages,
+        defaultLayout = echoData.layouts[echoOpts.defaultLayout];
+
+  Object.entries(echoData.pages).forEach(([page, data]) => {
+    const pageSlug = data.slug === echoOpts.keys.views.pages ? '' : Path.sep + data.slug;
+    const stubPath = echoOpts.dist + Path.sep + echoOpts.keys.views.pages + pageSlug;
+    mkdirp.sync(stubPath);
+
+    Object.entries(data.items).forEach(([page, data]) => {
+      buildHTML(stubPath + Path.sep + page + '.html', data);
+    });
+  });
+}
+
+
+// Build Pages
+const buildGuidePages = () => {
+
+  const defaultLayout = echoData.layouts[echoOpts.guideLayout];
+
+  Object.entries(echoData.guidePages).forEach(([page, data]) => {
+
+    const pageSlug = data.slug === echoOpts.keys.views.guides ? data.slug : echoOpts.keys.views.guides + Path.sep + data.slug;
+    const stubPath = echoOpts.dist + Path.sep + pageSlug;
+    mkdirp.sync(stubPath);
+
+    Object.entries(data.items).forEach(([page, data]) => {
+      buildHTML(stubPath + Path.sep + page + '.html', data);
+    });
+  });
+};
+
+
+
+
+
+// Build Pages
+const buildGuideBlocks = () => {
+
+  Object.entries(echoData.partials.blocks.items).forEach(([page, data]) => {
+
+    const basePath = echoOpts.keys.views.guides + Path.sep + echoOpts.keys.partials.blocksDestPath;
+
+    let stubPath = echoOpts.dist + Path.sep + basePath;
+    mkdirp.sync(stubPath);
+
+    if (data.type === 'partial') {
+      buildHTML(stubPath + Path.sep + page + '.html', data);
+      return;
+    }
+
+    if (data.type === 'collection') {
+      stubPath += Path.sep + data.id;
+      mkdirp.sync(stubPath);
+
+      Object.entries(data.items).forEach(([page, data]) => {
+        if (data.type === 'subcollection') {
+          stubPath += Path.sep + data.id;
+          mkdirp.sync(stubPath);
+
+          Object.entries(data.items).forEach(([page, data]) => {
+            // Partial
+            buildHTML(stubPath + Path.sep + page + '.html', data);
+
+          });
+        } else {
+          // Partial
+          buildHTML(stubPath + Path.sep + page + '.html', data);
+        }
+      })
+    }
+
+  });
+};
+
+
+
 /**
  * Build Echo
  *
  */
 const buildEcho = () => {
+
   mkdirp.sync(echoOpts.dist);
+
+  buildPages();
+  buildGuidePages();
+  buildGuideBlocks();
+
+  const index = fs.readFileSync('./src/index.html', 'utf-8');
+  // const fileMatter = Matter.read(index);
+  const content    = wrapPage(index, echoData.layouts[echoOpts.defaultLayout]),
+        template   = Handlebars.compile(content);
+
+  fs.writeFileSync(echoOpts.dist + Path.sep + 'index.html', Pretty(template(content), {ocd: true}));
 
 
 }
