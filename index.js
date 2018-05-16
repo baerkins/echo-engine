@@ -42,7 +42,9 @@ const echoDefaults = {
 
   defaultLayout: "default",
 
-  guideLayout: "default",
+  defaultGuideLayout: "default",
+
+  defaultBlocksLayout: "default-block",
 
   // Echo Guide Includes
   guideIncludes: ["src/views/guide/echo/*"],
@@ -123,10 +125,36 @@ const getName = function (filePath, preserveNumbers) {
 
 
 
+const registerHelpers = () => {
 
-Handlebars.registerHelper('json', function(context) {
-  return JSON.stringify(context, null, 2);
-});
+  // Print as json
+  Handlebars.registerHelper('json', function(context) {
+    return JSON.stringify(context, null, 2);
+  });
+
+  Handlebars.registerHelper('encodeURL', function(string) {
+    return encodeURIComponent(string);
+  });
+
+  Handlebars.registerHelper('decodeURL', function(string) {
+    return decodeURIComponent(string);
+  });
+
+  Handlebars.registerHelper('ifEquals', function(arg1, arg2, options) {
+    return (arg1 == arg2) ? options.fn(this) : options.inverse(this);
+  });
+
+  // Get URL parameter
+  Handlebars.registerHelper('getURLparam', function(param) {
+    if (!url) url = window.location.href;
+    param = param.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + param + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+  });
+}
 
 
 
@@ -170,12 +198,10 @@ const wrapPage = function (page, layout) {
 const buildContext = function (data, hash) {
 
 	// set keys to whatever is defined
-	var partialItems = {
-    partials: {}
-  };
-  partialItems.partials[echoOpts.keys.common] = echoData.partials.common;
-  partialItems.partials[echoOpts.keys.blocks] = echoData.partials.blocks;
-  partialItems.partials[echoOpts.keys.lib] = echoData.partials.lib;
+	var partialItems = {};
+  partialItems[echoOpts.keys.common] = echoData.partials.common;
+  partialItems[echoOpts.keys.blocks] = echoData.partials.blocks;
+  partialItems[echoOpts.keys.lib] = echoData.partials.lib;
 
 	var views = {};
   views[echoOpts.keys.views.guides] = echoData.guidePages;
@@ -184,18 +210,66 @@ const buildContext = function (data, hash) {
 	// var docs = {};
 	// docs[options.keys.docs] = assembly.docs;
 
-	return _.assign({}, data, echoData, hash);
+  return _.assign({}, data, echoData, hash);
 
 };
 
-
+/**
+ *
+ * @param {string} path The path where the file should be written
+ * @param {object} data Minimum data Model:
+ *
+ * data : {
+ *   name: *string* ,
+ *   data: {
+ *     *json* front matter data, may or may not include layout
+ *   },
+ *   html: *string* html content
+ *
+ * }
+ *
+ */
 const buildHTML = (path, data) => {
-  const defaultLayout = echoData.layouts[echoOpts.guideLayout],
-        layout     = data.data.layout,
-        pageLayout = typeof layout !== 'undefined' ? echoData.layouts[data.data.layout] : defaultLayout,
-        content    = wrapPage(data.html, pageLayout),
-        context    = buildContext(data.data);
-        template   = Handlebars.compile(content),
+
+  // Setup localData for Handlebars context, setup layout definition.
+  let localData = {};
+  let layout = echoData.layouts[echoOpts.defaultGuideLayout];
+
+  // Partial type
+  if ( _.has(data, 'partialType')) {
+    localData.partialType = data.partialType;
+
+    // Use default block partial
+    if ( data.partialType === echoOpts.keys.partials.blocks) {
+      layout = echoOpts.defaultBlocksLayout;
+    }
+  }
+
+  // Nicename
+  if ( _.has(data, 'name')) {
+    localData.name = data.name;
+  }
+
+  // Front Matter
+  if ( _.has(data, 'data') & !_.isEmpty(data.data)) {
+    Object.entries(data.data).forEach(([key, val]) => {
+      localData[key] = val;
+
+      if (val === 'layout') {
+        layout = val;
+      }
+    });
+  }
+
+  // if ( _.has(data, 'slug')) {
+  //   localData.slug = data.slug;
+  // }
+
+  // console.log(localData);
+
+  const content       = wrapPage(data.html, layout),
+        context       = buildContext(localData),
+        template      = Handlebars.compile(content);
 
   fs.writeFileSync(path, Pretty(template(context), {ocd: true}));
 }
@@ -272,10 +346,10 @@ const parsePartials = () => {
     // trim whitespace from material content
     let content = fileMatter.content.replace(/^(\s*(\r?\n|\r))+|(\s*(\r?\n|\r))+$/g, '');
 
-    // get local file data in front matter
-    const localData = _.omit(fileMatter.data, 'notes');
+    // // get local file data in front matter
+    // const localData = _.omit(fileMatter.data, 'notes');
 
-    echoData.partialData[partialID] = localData;
+    // echoData.partialData[partialID] = localData;
 
     // if (!_.isEmpty(localData)) {
     //   content = replaceMatter(localData, content);
@@ -297,8 +371,8 @@ const parsePartials = () => {
     let partialData = {
       id: id,
       partialID: partialID,
-      type: 'partial',
-      name: name,
+      partialType: parent,
+      name: toTitleCase(name),
       html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
       data: fileData,
@@ -503,7 +577,7 @@ const parsePages = () => {
       // create collection if it doesn't exist
       echoData.pages[collection] = echoData.pages[collection] || {
         name: toTitleCase(collection),
-        slug: slugify(collection),
+        slug: slugify(pageKey) + '/' + slugify(collection),
         items: {}
       };
 
@@ -571,6 +645,7 @@ const setup = userOptions => {
   // merge user options with defaults
   echoOpts = _.merge({}, echoDefaults, userOptions);
 
+  registerHelpers();
   parsePartials(); // Register Partials
   parseGuideIncludes(); // Register Guide Partials
   parseLayouts();
@@ -600,8 +675,8 @@ const buildPages = (baseDir) => {
         defaultLayout = echoData.layouts[echoOpts.defaultLayout];
 
   Object.entries(echoData.pages).forEach(([page, data]) => {
-    const pageSlug = data.slug === echoOpts.keys.views.pages ? '' : Path.sep + data.slug;
-    const stubPath = echoOpts.dist + Path.sep + echoOpts.keys.views.pages + pageSlug;
+    // const pageSlug = data.slug === echoOpts.keys.views.pages ? '' : Path.sep + data.slug;
+    const stubPath = echoOpts.dist + Path.sep + data.slug;
     mkdirp.sync(stubPath);
 
     Object.entries(data.items).forEach(([page, data]) => {
@@ -614,7 +689,7 @@ const buildPages = (baseDir) => {
 // Build Pages
 const buildGuidePages = () => {
 
-  const defaultLayout = echoData.layouts[echoOpts.guideLayout];
+  const defaultLayout = echoData.layouts[echoOpts.defaultGuideLayout];
 
   Object.entries(echoData.guidePages).forEach(([page, data]) => {
 

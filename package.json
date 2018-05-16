@@ -9,10 +9,11 @@
   "author": "Shaun M Baer",
   "license": "MIT",
   "devDependencies": {
-    "beautify": "0.0.8",
-    "pretty": "^2.0.0"
+
   },
   "dependencies": {
+    "beautify": "0.0.8",
+    "pretty": "^2.0.0",
     "globby": "^8.0.1",
     "gray-matter": "^3.1.1",
     "gulp-util": "^3.0.8",
