@@ -46,6 +46,8 @@ const echoDefaults = {
 
   defaultBlocksLayout: "default-block",
 
+  index: "src/index.html",
+
   // Echo Guide Includes
   guideIncludes: ["src/views/guide/echo/*"],
 
@@ -704,9 +706,6 @@ const buildGuidePages = () => {
 };
 
 
-
-
-
 // Build Pages
 const buildGuideBlocks = () => {
 
@@ -747,19 +746,23 @@ const buildGuideBlocks = () => {
 };
 
 const buildIndex = () => {
-  const index = fs.readFileSync('./src/index.html', 'utf-8');
-  const fileMatter = Matter.read('./src/index.html');
-  const localData = _.omit(fileMatter.data, 'notes');
+  const indexPath = Path.normalize(process.cwd() + Path.sep + echoOpts.index);
+  const fileMatter = Matter.read(indexPath);
 
-  let content    = wrapPage(fileMatter.content, echoData.layouts[echoOpts.defaultLayout]);
+  const content = fileMatter.content;
+  const name = fileMatter.title ? fileMatter.title : 'Home';
 
-  if (!_.isEmpty(localData)) {
-    content = replaceMatter(localData, content);
+  console.log(fileMatter.data);
+
+  const layout = fileMatter.layout ? fileMatter.layout : echoData.layouts[echoOpts.defaultLayout];
+  const data = {
+    name: name,
+    data: fileMatter.data,
+    html: wrapPage(content, layout)
   }
 
-  const template = Handlebars.compile(content);
+  buildHTML(echoOpts.dist + Path.sep + 'index.html', data);
 
-  fs.writeFileSync(echoOpts.dist + Path.sep + 'index.html', Pretty(template(content), {ocd: true}));
 }
 
 
