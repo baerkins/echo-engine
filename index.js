@@ -23,8 +23,6 @@ const AssebleHelpers = require('handlebars-helpers')({
  *
  */
 const echoDefaults = {
-  // default layout
-  layout: "default",
 
   // Directory where partials live
   partialsDir: "src/partials/",
@@ -44,10 +42,13 @@ const echoDefaults = {
   // Layouts Directory
   layouts: ["src/views/layouts/*"],
 
+  // default layout
   defaultLayout: "default",
 
+  // default module layout
   defaultModuleLayout: "default-module",
 
+  // path to index file
   index: "src/index.html",
 
   // Echo Guide Includes
@@ -67,6 +68,9 @@ const echoDefaults = {
 
   // Build Path
   dist: "./dist",
+
+  // guide slug path
+  guideBaseSlug: "guide/",
 
   keys: {
     partials: {
@@ -341,11 +345,14 @@ const parsePartials = () => {
     const id = name;
 
     // Set slug for modules
-    let partialSlug = false;
+    let partialSlug = parent + Path.sep;
+
     if ( parent === echoOpts.keys.partials.modules) {
-      partialSlug = collection ? slugify(collection) + '/' : '';
-      partialSlug += subCollection ? slugify(subCollection) + '/' : '';
+      partialSlug += collection ? slugify(collection) + Path.sep : '';
+      partialSlug += subCollection ? slugify(subCollection) + Path.sep : '';
       partialSlug += slugify(name);
+    } else {
+      partialSlug += collection || subCollection ? slugify(collection) + '#' + slugify(name) : slugify(name);
     }
 
     // get info
@@ -699,9 +706,9 @@ const buildGuidePages = () => {
 
   Object.entries(echoData.guidePages).forEach(([page, data]) => {
 
-    const pageSlug = data.slug === echoOpts.keys.views.guides ? data.slug : echoOpts.keys.views.guides + Path.sep + data.slug;
-    const stubPath = echoOpts.dist + Path.sep + pageSlug;
-    mkdirp.sync(stubPath);
+    const pageSlug = data.slug;
+    const stubPath = echoOpts.dist;
+    // mkdirp.sync(stubPath);
 
     Object.entries(data.items).forEach(([page, data]) => {
       buildHTML(stubPath + Path.sep + page + '.html', data);
@@ -716,7 +723,7 @@ const buildGuideModules = () => {
 
   Object.entries(echoData.partials.modules.items).forEach(([page, data]) => {
 
-    const basePath = echoOpts.keys.views.guides + Path.sep + echoOpts.keys.partials.modulesDestPath;
+    const basePath = echoOpts.keys.partials.modulesDestPath;
     let stubPath = echoOpts.dist + Path.sep + basePath;
     mkdirp.sync(stubPath);
 
@@ -785,7 +792,10 @@ const buildEcho = () => {
   buildGuideModules();
   buildIndex();
 
-  fs.writeFile(echoOpts.dist + '/echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
+  const jsonDir = echoOpts.dist + Path.sep + 'json';
+  mkdirp.sync(jsonDir);
+
+  fs.writeFile(jsonDir + '/echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
 }
 
 
