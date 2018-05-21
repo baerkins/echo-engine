@@ -14,6 +14,10 @@ const Path = require('path');
 const fs = require('fs');
 const util = require('util');
 
+const AssebleHelpers = require('handlebars-helpers')({
+  handlebars: Handlebars
+});
+
 /**
  * Defaults
  *
@@ -28,8 +32,8 @@ const echoDefaults = {
   // common entries
   common: "common/**/*",
 
-  // blocks
-  blocks: "blocks/**/*",
+  // modules
+  modules: "modules/**/*",
 
   // partial includes,
   partialLib: "lib/**/*",
@@ -42,9 +46,7 @@ const echoDefaults = {
 
   defaultLayout: "default",
 
-  defaultGuideLayout: "default",
-
-  defaultBlocksLayout: "default-block",
+  defaultModuleLayout: "default-module",
 
   index: "src/index.html",
 
@@ -69,9 +71,9 @@ const echoDefaults = {
   keys: {
     partials: {
       common: 'common',
-      blocks: 'blocks',
+      modules: 'modules',
       lib: 'lib',
-      blocksDestPath: 'blocks'
+      modulesDestPath: 'modules'
     },
     views: {
       guides: 'guide',
@@ -202,7 +204,7 @@ const buildContext = function (data, hash) {
 	// set keys to whatever is defined
 	var partialItems = {};
   partialItems[echoOpts.keys.common] = echoData.partials.common;
-  partialItems[echoOpts.keys.blocks] = echoData.partials.blocks;
+  partialItems[echoOpts.keys.modules] = echoData.partials.modules;
   partialItems[echoOpts.keys.lib] = echoData.partials.lib;
 
 	var views = {};
@@ -235,15 +237,17 @@ const buildHTML = (path, data) => {
 
   // Setup localData for Handlebars context, setup layout definition.
   let localData = {};
-  let layout = echoData.layouts[echoOpts.defaultGuideLayout];
+  let layout = echoData.layouts[echoOpts.defaultLayout];
+
+  console.log(data);
 
   // Partial type
   if ( _.has(data, 'partialType')) {
     localData.partialType = data.partialType;
 
     // Use default block partial
-    if ( data.partialType === echoOpts.keys.partials.blocks) {
-      layout = echoOpts.defaultBlocksLayout;
+    if ( data.partialType === echoOpts.keys.partials.modules) {
+      layout = echoData.layouts[echoOpts.defaultModuleLayout];
     }
   }
 
@@ -255,10 +259,11 @@ const buildHTML = (path, data) => {
   // Front Matter
   if ( _.has(data, 'data') & !_.isEmpty(data.data)) {
     Object.entries(data.data).forEach(([key, val]) => {
+
       localData[key] = val;
 
-      if (val === 'layout') {
-        layout = val;
+      if (key === 'layout') {
+        layout = echoData.layouts[val];
       }
     });
   }
@@ -275,6 +280,7 @@ const buildHTML = (path, data) => {
 
   fs.writeFileSync(path, Pretty(template(context), {ocd: true}));
 }
+
 
 const replaceMatter = (matter, content) => {
 
@@ -306,7 +312,7 @@ const parsePartials = () => {
 
   const allPartials = [
     Path.normalize(echoOpts.partialsDir + echoOpts.common),
-    Path.normalize(echoOpts.partialsDir + echoOpts.blocks),
+    Path.normalize(echoOpts.partialsDir + echoOpts.modules),
     Path.normalize(echoOpts.partialsDir + echoOpts.partialLib)
   ];
 
@@ -334,9 +340,9 @@ const parsePartials = () => {
     const partialID = subCollection ? subCollection + echoOpts.idDelimiter + name : name;
     const id = name;
 
-    // Set slug for blocks
+    // Set slug for modules
     let partialSlug = false;
-    if ( parent === echoOpts.keys.partials.blocks) {
+    if ( parent === echoOpts.keys.partials.modules) {
       partialSlug = collection ? slugify(collection) + '/' : '';
       partialSlug += subCollection ? slugify(subCollection) + '/' : '';
       partialSlug += slugify(name);
@@ -349,13 +355,13 @@ const parsePartials = () => {
     let content = fileMatter.content.replace(/^(\s*(\r?\n|\r))+|(\s*(\r?\n|\r))+$/g, '');
 
     // // get local file data in front matter
-    // const localData = _.omit(fileMatter.data, 'notes');
+    const localData = _.omit(fileMatter.data, 'notes');
 
     // echoData.partialData[partialID] = localData;
 
-    // if (!_.isEmpty(localData)) {
-    //   content = replaceMatter(localData, content);
-    // }
+    if (!_.isEmpty(localData)) {
+      content = replaceMatter(localData, content);
+    }
 
     // register the partial
     Handlebars.registerPartial(partialID, content);
@@ -373,12 +379,13 @@ const parsePartials = () => {
     let partialData = {
       id: id,
       partialID: partialID,
-      partialType: parent,
+      // partialType: parent,
       name: toTitleCase(name),
       html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
       data: fileData,
-      slug: partialSlug
+      slug: partialSlug,
+      type: 'partial'
     };
 
     // Add echoData.partials object key with file base value
@@ -496,8 +503,8 @@ const parseGuideFiles = () => {
   const files = Globby.sync(echoOpts.guidePages, { nodir: true });
 
   files.forEach(function (file) {
+
     const id = slugify(getName(file));
-    const content = fs.readFileSync(file, 'utf-8');
 
     // console.log(Path.normalize(Path.dirname(file)));
 
@@ -506,8 +513,20 @@ const parseGuideFiles = () => {
       collection = (dirname !== echoOpts.keys.views.guide) ? dirname : '';
       // collection = '';
 
-    const fileMatter = Matter(file),
-      fileData = _.omit(fileMatter.data, 'notes');
+    const fileMatter = Matter.read(file);
+    const fileData = _.omit(fileMatter.data, 'notes');
+
+    // trim whitespace from material content
+    let content = fileMatter.content.replace(/^(\s*(\r?\n|\r))+|(\s*(\r?\n|\r))+$/g, '');
+
+    // // get local file data in front matter
+    const localData = fileMatter;
+
+    // echoData.partialData[partialID] = localData;
+
+    if (!_.isEmpty(localData)) {
+      content = replaceMatter(localData, content);
+    }
 
     // if this file is part of a collection
     if (collection) {
@@ -516,6 +535,7 @@ const parseGuideFiles = () => {
       echoData.guidePages[collection] = echoData.guidePages[collection] || {
         name: toTitleCase(collection),
         slug: slugify(collection),
+        data: fileData,
         items: {}
       };
 
@@ -628,17 +648,6 @@ var parseData = () => {
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
 /**
  * Kick off the data parade
  *
@@ -655,17 +664,12 @@ const setup = userOptions => {
   parseGuideFiles();
   parsePages();
 
-  // setup steps
+  // fs.writeFile('echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
 
   // console.log(util.inspect(echoData, {
   //     showHidden: false,
   //     depth: null
   //   }));
-
-
-  fs.writeFile('echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
-  // parseViews();
-  // parseDocs();
 };
 
 
@@ -691,7 +695,7 @@ const buildPages = (baseDir) => {
 // Build Pages
 const buildGuidePages = () => {
 
-  const defaultLayout = echoData.layouts[echoOpts.defaultGuideLayout];
+  const defaultLayout = echoData.layouts[echoOpts.defaultLayout];
 
   Object.entries(echoData.guidePages).forEach(([page, data]) => {
 
@@ -707,12 +711,12 @@ const buildGuidePages = () => {
 
 
 // Build Pages
-const buildGuideBlocks = () => {
+const buildGuideModules = () => {
 
-  Object.entries(echoData.partials.blocks.items).forEach(([page, data]) => {
 
-    const basePath = echoOpts.keys.views.guides + Path.sep + echoOpts.keys.partials.blocksDestPath;
+  Object.entries(echoData.partials.modules.items).forEach(([page, data]) => {
 
+    const basePath = echoOpts.keys.views.guides + Path.sep + echoOpts.keys.partials.modulesDestPath;
     let stubPath = echoOpts.dist + Path.sep + basePath;
     mkdirp.sync(stubPath);
 
@@ -743,22 +747,25 @@ const buildGuideBlocks = () => {
     }
 
   });
+
+  // console.log(util.inspect(echoData.partials.modules.items, {
+  //   showHidden: false,
+  //   depth: null
+  // }));
 };
 
 const buildIndex = () => {
   const indexPath = Path.normalize(process.cwd() + Path.sep + echoOpts.index);
   const fileMatter = Matter.read(indexPath);
-
-  const content = fileMatter.content;
   const name = fileMatter.title ? fileMatter.title : 'Home';
 
-  console.log(fileMatter.data);
+  // console.log(fileMatter.data);
 
   const layout = fileMatter.layout ? fileMatter.layout : echoData.layouts[echoOpts.defaultLayout];
   const data = {
     name: name,
     data: fileMatter.data,
-    html: wrapPage(content, layout)
+    html: fileMatter.content
   }
 
   buildHTML(echoOpts.dist + Path.sep + 'index.html', data);
@@ -775,8 +782,10 @@ const buildEcho = () => {
   mkdirp.sync(echoOpts.dist);
   buildPages();
   buildGuidePages();
-  buildGuideBlocks();
+  buildGuideModules();
   buildIndex();
+
+  fs.writeFile(echoOpts.dist + '/echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
 }
 
 

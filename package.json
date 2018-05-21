@@ -8,20 +8,19 @@
   },
   "author": "Shaun M Baer",
   "license": "MIT",
-  "devDependencies": {
-
-  },
+  "devDependencies": {},
   "dependencies": {
     "beautify": "0.0.8",
-    "pretty": "^2.0.0",
     "globby": "^8.0.1",
     "gray-matter": "^3.1.1",
     "gulp-util": "^3.0.8",
     "handlebars": "^4.0.11",
+    "handlebars-helpers": "^0.10.0",
     "i": "^0.3.6",
     "js-yaml": "^3.10.0",
     "lodash": "^4.17.5",
     "markdown-it": "^8.4.1",
-    "mkdirp": "^0.5.1"
+    "mkdirp": "^0.5.1",
+    "pretty": "^2.0.0"
   }
 }
