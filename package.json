@@ -17,8 +17,8 @@
     "handlebars": "^4.0.11",
     "handlebars-helpers": "^0.10.0",
     "i": "^0.3.6",
-    "js-yaml": "^3.10.0",
-    "lodash": "^4.17.5",
+    "js-yaml": "^3.11.0",
+    "lodash": "^4.17.10",
     "markdown-it": "^8.4.1",
     "mkdirp": "^0.5.1",
     "pretty": "^2.0.0"

@@ -55,7 +55,7 @@ const echoDefaults = {
   guideIncludes: ["src/views/guide/echo/*"],
 
   // Echo Guide Pages
-  guidePages: ["src/views/guide/**/*", "!src/views/guide/echo/**"],
+  guidepages: ["src/views/guide/**/*", "!src/views/guide/echo/**"],
 
   // Pages
   pages: ["src/views/pages/**/*"],
@@ -103,7 +103,7 @@ let echoOpts = {};
 let echoData = {
   partials      : {}, // All registered partials
   layouts       : {}, // Layouts
-  guidePages    : {},
+  guidepages    : {},
   pages         : {},
   sitedata      : {},
   partialData   : {}
@@ -212,7 +212,7 @@ const buildContext = function (data, hash) {
   partialItems[echoOpts.keys.lib] = echoData.partials.lib;
 
 	var views = {};
-  views[echoOpts.keys.views.guides] = echoData.guidePages;
+  views[echoOpts.keys.views.guides] = echoData.guidepages;
   views[echoOpts.keys.views.pages] = echoData.pages;
 
 	// var docs = {};
@@ -243,7 +243,7 @@ const buildHTML = (path, data) => {
   let localData = {};
   let layout = echoData.layouts[echoOpts.defaultLayout];
 
-  console.log(data);
+  // console.log(data);
 
   // Partial type
   if ( _.has(data, 'partialType')) {
@@ -502,12 +502,12 @@ const parseGuideIncludes = () => {
 /**
  * Register layout includes has Handlebars partials
  */
-const parseGuideFiles = () => {
+const parseGuidePages = () => {
 
-  echoData.guidePages = {};
+  echoData.guidepages = {};
 
   // get files
-  const files = Globby.sync(echoOpts.guidePages, { nodir: true });
+  const files = Globby.sync(echoOpts.guidepages, { nodir: true });
 
   files.forEach(function (file) {
 
@@ -517,7 +517,7 @@ const parseGuideFiles = () => {
 
     // determine if view is part of a collection (subdir)
     const dirname = Path.normalize(Path.dirname(file)).split(Path.sep).pop();
-      collection = (dirname !== echoOpts.keys.views.guide) ? dirname : '';
+      // collection = (dirname !== echoOpts.keys.views.guide) ? dirname : '';
       // collection = '';
 
     const fileMatter = Matter.read(file);
@@ -536,18 +536,19 @@ const parseGuideFiles = () => {
     }
 
     // if this file is part of a collection
-    if (collection) {
+    // if (collection) {
 
-      // create collection if it doesn't exist
-      echoData.guidePages[collection] = echoData.guidePages[collection] || {
-        name: toTitleCase(collection),
-        slug: slugify(collection),
-        data: fileData,
-        items: {}
-      };
+    //   // create collection if it doesn't exist
+    //   echoData.guidePages[collection] = echoData.guidePages[collection] || {
+    //     name: toTitleCase(collection),
+    //     slug: slugify(collection),
+    //     data: fileData,
+    //     items: {}
+    //   };
 
       // store view data
-      echoData.guidePages[collection].items[id] = {
+      // echoData.guidePages[collection].items[id] = {
+      echoData.guidepages[id] = {
         name: toTitleCase(id),
         notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
         data: fileData,
@@ -555,10 +556,10 @@ const parseGuideFiles = () => {
         html: content
       };
 
-    }
+    // }
   });
 
-  // console.log(util.inspect(echoData.guidePages, {
+  // console.log(util.inspect(echoData.guidepages, {
   //     showHidden: false,
   //     depth: null
   //   }));
@@ -668,7 +669,7 @@ const setup = userOptions => {
   parseGuideIncludes(); // Register Guide Partials
   parseLayouts();
   parseData();
-  parseGuideFiles();
+  parseGuidePages();
   parsePages();
 
   // fs.writeFile('echoData.json', JSON.stringify(echoData, null, 2), 'utf8', () => {});
@@ -702,18 +703,10 @@ const buildPages = (baseDir) => {
 // Build Pages
 const buildGuidePages = () => {
 
-  const defaultLayout = echoData.layouts[echoOpts.defaultLayout];
-
-  Object.entries(echoData.guidePages).forEach(([page, data]) => {
-
-    const pageSlug = data.slug;
-    const stubPath = echoOpts.dist;
-    // mkdirp.sync(stubPath);
-
-    Object.entries(data.items).forEach(([page, data]) => {
-      buildHTML(stubPath + Path.sep + page + '.html', data);
-    });
+  Object.entries(echoData.guidepages).forEach(([key, file]) => {
+    buildHTML(echoOpts.dist + Path.sep + key + '.html', file);
   });
+
 };
 
 
