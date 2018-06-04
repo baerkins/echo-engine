@@ -48,8 +48,6 @@ const echoDefaults = {
   // default module layout
   defaultModuleLayout: "default-module",
 
-  defaultIndexLayout: "default-index",
-
   // path to index file
   index: "src/index.html",
 
@@ -239,7 +237,7 @@ const buildContext = function (data, hash) {
  * }
  *
  */
-const buildHTML = (path, data, layoutOverride) => {
+const buildHTML = (path, data, skipLayout) => {
 
   // Setup localData for Handlebars context, setup layout definition.
   let localData = {};
@@ -274,9 +272,12 @@ const buildHTML = (path, data, layoutOverride) => {
     });
   }
 
-  if ( typeof layoutOverride !== 'undefined' ) {
-    layout = echoData.layouts[layoutOverride];
-  }
+  // if ( typeof skipLayout !== 'undefined' && skipLayout == false ) {
+
+  //   if ()
+
+  //   layout = echoData.layouts[layoutOverride];
+  // }
 
   // if ( _.has(data, 'slug')) {
   //   localData.slug = data.slug;
@@ -284,7 +285,9 @@ const buildHTML = (path, data, layoutOverride) => {
 
   // console.log(localData);
 
-  const content       = wrapPage(data.html, layout),
+  wrapSelf = typeof skipLayout !== 'undefined' ? skipLayout : false;
+
+  const content       = wrapSelf ? data.html : wrapPage(data.html, layout),
         context       = buildContext(localData),
         template      = Handlebars.compile(content);
 
@@ -774,7 +777,7 @@ const buildIndex = () => {
     html: fileMatter.content
   }
 
-  buildHTML(echoOpts.dist + Path.sep + 'index.html', data, echoOpts.defaultIndexLayout);
+  buildHTML(echoOpts.dist + Path.sep + 'index.html', data, true);
 
 }
 
