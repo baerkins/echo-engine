@@ -21,6 +21,7 @@
     "lodash": "^4.17.10",
     "markdown-it": "^8.4.1",
     "mkdirp": "^0.5.1",
-    "pretty": "^2.0.0"
+    "pretty": "^2.0.0",
+    "sort-object": "^3.0.2"
   }
 }

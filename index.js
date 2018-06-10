@@ -8,6 +8,7 @@ const mkdirp = require('mkdirp');
 const Globby = require('globby');
 const Beautify = require('beautify');
 const Pretty = require('pretty');
+const SortObj = require('sort-object');
 
 // Node
 const Path = require('path');
@@ -450,14 +451,13 @@ const parsePartials = () => {
     return;
 
 
-    // dataPath = partialData;
-
-    // Add partial to echoData.partials
-    // _.set(echoData.partials, dataPath, partialData);
-
-
-
   });
+
+  // echoData.partials.common.items = SortObj(echoData.partials.common, 'order');
+
+  // for (var collection in assembly.materials) {
+  //   assembly.materials[collection].items = SortObj(assembly.materials[collection].items, 'order');
+  // }
 
   // console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
 
