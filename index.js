@@ -15,7 +15,7 @@ const Path = require('path');
 const fs = require('fs');
 const util = require('util');
 
-const AssebleHelpers = require('handlebars-helpers')({
+const AssembleHelpers = require('handlebars-helpers')({
   handlebars: Handlebars
 });
 
@@ -72,6 +72,11 @@ const echoDefaults = {
 
   // guide slug path
   guideBaseSlug: "guide/",
+
+  // beautifier options
+	prettyOpts: {
+		ocd: true
+	},
 
   keys: {
     partials: {
@@ -134,39 +139,6 @@ const getName = function (filePath, preserveNumbers) {
 
 
 
-const registerHelpers = () => {
-
-  // Print as json
-  Handlebars.registerHelper('json', function(context) {
-    return JSON.stringify(context, null, 2);
-  });
-
-  Handlebars.registerHelper('encodeURL', function(string) {
-    return encodeURIComponent(string);
-  });
-
-  Handlebars.registerHelper('decodeURL', function(string) {
-    return decodeURIComponent(string);
-  });
-
-  Handlebars.registerHelper('ifEquals', function(arg1, arg2, options) {
-    return (arg1 == arg2) ? options.fn(this) : options.inverse(this);
-  });
-
-  // Get URL parameter
-  Handlebars.registerHelper('getURLparam', function(param) {
-    if (!url) url = window.location.href;
-    param = param.replace(/[\[\]]/g, "\\$&");
-    var regex = new RegExp("[?&]" + param + "(=([^&#]*)|&|#|$)"),
-        results = regex.exec(url);
-    if (!results) return null;
-    if (!results[2]) return '';
-    return decodeURIComponent(results[2].replace(/\+/g, " "));
-  });
-}
-
-
-
 
 /**
  * Convert a file name to title case
@@ -219,7 +191,7 @@ const buildContext = function (data, hash) {
 	// var docs = {};
 	// docs[options.keys.docs] = assembly.docs;
 
-  return _.assign({}, data, echoData, hash);
+  return _.assign({}, data, echoData, echoData.data, hash);
 
 };
 
@@ -273,26 +245,13 @@ const buildHTML = (path, data, skipLayout) => {
     });
   }
 
-  // if ( typeof skipLayout !== 'undefined' && skipLayout == false ) {
-
-  //   if ()
-
-  //   layout = echoData.layouts[layoutOverride];
-  // }
-
-  // if ( _.has(data, 'slug')) {
-  //   localData.slug = data.slug;
-  // }
-
-  // console.log(localData);
-
   wrapSelf = typeof skipLayout !== 'undefined' ? skipLayout : false;
 
   const content       = wrapSelf ? data.html : wrapPage(data.html, layout),
         context       = buildContext(localData),
         template      = Handlebars.compile(content);
 
-  fs.writeFileSync(path, Pretty(template(context), {ocd: true}));
+  fs.writeFileSync(path, Pretty(template(context), echoOpts.prettyOpts));
 }
 
 
@@ -305,6 +264,53 @@ const replaceMatter = (matter, content) => {
 
   return content;
 
+}
+
+
+const registerHelpers = () => {
+
+  // Print as json
+  Handlebars.registerHelper('json', function(context) {
+    return JSON.stringify(context, null, 2);
+  });
+
+  Handlebars.registerHelper('encodeURL', function(string) {
+    return encodeURIComponent(string);
+  });
+
+  Handlebars.registerHelper('decodeURL', function(string) {
+    return decodeURIComponent(string);
+  });
+
+  Handlebars.registerHelper('ifEquals', function(arg1, arg2, options) {
+    return (arg1 == arg2) ? options.fn(this) : options.inverse(this);
+  });
+
+  // Get URL parameter
+  Handlebars.registerHelper('getURLparam', function(param) {
+    if (!url) url = window.location.href;
+    param = param.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + param + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+  });
+
+
+
+  Handlebars.registerHelper('itemcontent', function (id, context, opts) {
+
+		// attempt to find pre-compiled partial
+		const template = Handlebars.partials[id];
+
+		// compile partial if not already compiled
+		const content = !_.isFunction(template) ? Handlebars.compile(template) : template;
+
+    // return beautified html with trailing whitespace removed
+		return Pretty(content(context).replace(/^\s+/, ''), echoOpts.prettyOpts);
+
+	});
 }
 
 
@@ -374,7 +380,6 @@ const parsePartials = () => {
     // // get local file data in front matter
     const localData = _.omit(fileMatter.data, 'notes');
 
-    // echoData.partialData[partialID] = localData;
 
     if (!_.isEmpty(localData)) {
       content = replaceMatter(localData, content);
@@ -383,23 +388,29 @@ const parsePartials = () => {
     // register the partial
     Handlebars.registerPartial(partialID, content);
 
+    // let template = Handlebars.compile(content);
+
     if (parent === echoOpts.keys.partials.lib) {
       return false;
     }
+
+
+    // echoData.partialData[partialID] = content;
 
     /**
      * Store partial in the echoData object
      *
      */
     // let dataPath = parent;
-    let fileData = _.omit(fileMatter.data, 'notes');
+    let fileData = _.omit(fileMatter.data, ['notes', 'spec']);
     let partialData = {
-      id: id,
-      partialID: partialID,
+      id: partialID,
+      // partialID: ,
       // partialType: parent,
       name: toTitleCase(name),
-      html: content,
+      // html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
+      spec: fileMatter.data.spec ? fileMatter.data.spec : '',
       data: fileData,
       slug: partialSlug,
       type: 'partial'
@@ -538,8 +549,6 @@ const parseGuidePages = () => {
     // // get local file data in front matter
     const localData = fileMatter;
 
-    // echoData.partialData[partialID] = localData;
-
     if (!_.isEmpty(localData)) {
       content = replaceMatter(localData, content);
     }
@@ -674,10 +683,10 @@ const setup = userOptions => {
   echoOpts = _.merge({}, echoDefaults, userOptions);
 
   registerHelpers();
-  parsePartials(); // Register Partials
-  parseGuideIncludes(); // Register Guide Partials
   parseLayouts();
+  parseGuideIncludes(); // Register Guide Partials
   parseData();
+  parsePartials(); // Register Partials
   parseGuidePages();
   parsePages();
 
