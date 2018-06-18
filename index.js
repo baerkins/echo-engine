@@ -9,6 +9,7 @@ const Globby = require('globby');
 const Beautify = require('beautify');
 const Pretty = require('pretty');
 const SortObj = require('sort-object');
+const DeepSortObj = require('deep-sort-object');
 
 // Node
 const Path = require('path');
@@ -215,22 +216,34 @@ const buildHTML = (path, data, skipLayout) => {
   // Setup localData for Handlebars context, setup layout definition.
   let localData = {};
   let layout = echoData.layouts[echoOpts.defaultLayout];
+  let content;
 
   // console.log(data);
 
   // Partial type
   if ( _.has(data, 'partialType')) {
     localData.partialType = data.partialType;
-
-    // Use default block partial
-    if ( data.partialType === echoOpts.keys.partials.modules) {
-      layout = echoData.layouts[echoOpts.defaultModuleLayout];
-    }
   }
 
   // Nicename
   if ( _.has(data, 'name')) {
     localData.name = data.name;
+  }
+
+  if ( _.has(data, 'id')) {
+    localData.id = data.id;
+  }
+
+  if ( _.has(data, 'slug')) {
+    localData.slug = data.slug;
+  }
+
+  if ( _.has(data, 'spec')) {
+    localData.spec = data.spec;
+  }
+
+  if ( _.has(data, 'notes')) {
+    localData.notes = data.notes;
   }
 
   // Front Matter
@@ -245,13 +258,20 @@ const buildHTML = (path, data, skipLayout) => {
     });
   }
 
-  wrapSelf = typeof skipLayout !== 'undefined' ? skipLayout : false;
+  // Use default block partial
+  if ( data.partialType === echoOpts.keys.partials.modules) {
+    content = echoData.layouts[echoOpts.defaultModuleLayout];
+  } else {
+    let wrapSelf = typeof skipLayout !== 'undefined' ? skipLayout : false;
+    content  = wrapSelf ? data.html : wrapPage(data.html, layout);
+  }
 
-  const content       = wrapSelf ? data.html : wrapPage(data.html, layout),
-        context       = buildContext(localData),
-        template      = Handlebars.compile(content);
+  const context  = buildContext(localData),
+        template = Handlebars.compile(content);
 
   fs.writeFileSync(path, Pretty(template(context), echoOpts.prettyOpts));
+
+
 }
 
 
@@ -406,15 +426,19 @@ const parsePartials = () => {
     let partialData = {
       id: partialID,
       // partialID: ,
-      // partialType: parent,
+      partialType: parent,
       name: toTitleCase(name),
       // html: content,
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
       spec: fileMatter.data.spec ? fileMatter.data.spec : '',
       data: fileData,
       slug: partialSlug,
-      type: 'partial'
+      type: 'partial',
     };
+
+    if (parent === echoOpts.keys.partials.modules) {
+      partialData.html = content;
+    }
 
     // Add echoData.partials object key with file base value
     if (!_.has(echoData.partials, parent)) {
@@ -467,13 +491,8 @@ const parsePartials = () => {
 
   });
 
-  // echoData.partials.common.items = SortObj(echoData.partials.common, 'order');
-
-  // for (var collection in assembly.materials) {
-  //   assembly.materials[collection].items = SortObj(assembly.materials[collection].items, 'order');
-  // }
-
-  // console.log(util.inspect(echoData.partials, { showHidden: false, depth: null }))
+  // Sort Common
+  echoData.partials = DeepSortObj(echoData.partials);
 
 }
 
@@ -730,7 +749,6 @@ const buildGuidePages = () => {
 
 // Build Pages
 const buildGuideModules = () => {
-
 
   Object.entries(echoData.partials.modules.items).forEach(([page, data]) => {
 
