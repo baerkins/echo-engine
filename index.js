@@ -494,6 +494,21 @@ const parsePartials = () => {
   // Sort Common
   echoData.partials = DeepSortObj(echoData.partials);
 
+  // Sort Modules - Single before collections
+  let currentMods = echoData.partials[echoOpts.keys.partials.modules].items;
+  let modsSort = {};
+  for ( let key in currentMods ) {
+    if (currentMods[key].partialType === 'modules') {
+      modsSort[key] = currentMods[key];
+      delete currentMods[key];
+    }
+  }
+  for ( let key in currentMods ) {
+    modsSort[key] = currentMods[key];
+  }
+
+  echoData.partials[echoOpts.keys.partials.modules].items = modsSort;
+
 }
 
 
