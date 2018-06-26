@@ -8,7 +8,6 @@ const mkdirp = require('mkdirp');
 const Globby = require('globby');
 const Beautify = require('beautify');
 const Pretty = require('pretty');
-const Cleaner = require('clean-html');
 const SortObj = require('sort-object');
 const DeepSortObj = require('deep-sort-object');
 
@@ -328,18 +327,6 @@ const registerHelpers = () => {
     return JSON.stringify(context, null, 2);
   });
 
-  Handlebars.registerHelper('encodeURL', function(string) {
-    return encodeURIComponent(string);
-  });
-
-  Handlebars.registerHelper('decodeURL', function(string) {
-    return decodeURIComponent(string);
-  });
-
-  Handlebars.registerHelper('ifEquals', function(arg1, arg2, options) {
-    return (arg1 == arg2) ? options.fn(this) : options.inverse(this);
-  });
-
   // Get URL parameter
   Handlebars.registerHelper('getURLparam', function(param) {
     if (!url) url = window.location.href;
@@ -352,8 +339,8 @@ const registerHelpers = () => {
   });
 
 
-
-  Handlebars.registerHelper('itemcontent', function (id, context, opts) {
+  // Output Handlebar-ed content
+  Handlebars.registerHelper('itemcontent', function (id, context) {
 
 		// attempt to find pre-compiled partial
 		const template = Handlebars.partials[id];
@@ -362,10 +349,24 @@ const registerHelpers = () => {
 		const content = !_.isFunction(template) ? Handlebars.compile(template) : template;
 
     // return beautified html with trailing whitespace removed
-    return Pretty(content(context).replace(/^\s+/, ''), echoOpts.prettyOpts);
-    // return Pretty(content(context).replace(/^\s+/, ''));
+		return Pretty(content(context).replace(/^\s+/, ''), echoOpts.prettyOpts);
 
-	});
+  });
+
+
+
+  Handlebars.registerHelper('guideLink', function (slug) {
+    const file = fs.readFileSync('src/data/global.yml', 'utf-8');
+
+    if (file) {
+      const yml = JSYaml.safeLoad(file);
+      if (yml.baseurl) {
+        const slashSlug = slug.startsWith('/') ? slug : '/' + slug;
+        return yml.baseurl + slashSlug;
+      }
+    }
+    return slug.startsWith('/') ? slug : '/' + slug;
+  });
 }
 
 
@@ -418,14 +419,16 @@ const parsePartials = () => {
     const id = name;
 
     // Set slug for modules
-    let partialSlug = parent + Path.sep;
+    let partialSlug;
 
     if ( parent === echoOpts.keys.partials.modules) {
+      partialSlug  = parent + Path.sep;
       partialSlug += collection ? slugify(collection) + Path.sep : '';
       partialSlug += subCollection ? slugify(subCollection) + Path.sep : '';
       partialSlug += slugify(name);
+      partialSlug += '.html';
     } else {
-      partialSlug += collection || subCollection ? slugify(collection) + '#' + slugify(name) : slugify(name);
+      partialSlug = collection || subCollection ? slugify(collection) + '.html' + '#' + slugify(name) : slugify(name) + '.html';
     }
 
     // get info
@@ -445,8 +448,7 @@ const parsePartials = () => {
     // register the partial
     Handlebars.registerPartial(partialID, content);
 
-    // let template = Handlebars.compile(content);
-
+    // Lib partials have been registered, so ok to bail
     if (parent === echoOpts.keys.partials.lib) {
       return false;
     }
@@ -469,6 +471,7 @@ const parsePartials = () => {
     // Add html to module objects
     if (parent === echoOpts.keys.partials.modules) {
       partialData.html = content;
+      partialData.addSlash = true;
     }
 
     // Add echoData.partials object key with file base value
@@ -488,6 +491,7 @@ const parsePartials = () => {
           type: echoOpts.keys.echo.collection,
           name: toTitleCase(collection),
           id: slugify(collection),
+          slug: slugify(collection) + '.html',
           items: {}
         };
       }
@@ -500,6 +504,7 @@ const parsePartials = () => {
           type: echoOpts.keys.echo.subcollection,
           name: toTitleCase(subCollection),
           id: slugify(subCollection),
+          slug: slugify(collection) + '.html#' + slugify(subCollection),
           items: {}
         };
       }
@@ -628,7 +633,7 @@ const parseGuidePages = () => {
       name: toTitleCase(id),
       notes: fileMatter.data.notes ? Markdown.render(fileMatter.data.notes) : '',
       data: fileData,
-      slug: id,
+      slug: id + '.html',
       html: content
     };
 
@@ -674,7 +679,6 @@ const parsePages = () => {
       // create collection if it doesn't exist
       echoData.pages[collection] = echoData.pages[collection] || {
         name: toTitleCase(collection),
-        slug: slugify(pageKey) + '/' + slugify(collection),
         items: {}
       };
 
@@ -682,14 +686,16 @@ const parsePages = () => {
       echoData.pages[collection].items[id] = {
         name: toTitleCase(id),
         data: fileData,
-        html: content
+        html: content,
+        slug: slugify(pageKey) + Path.sep + slugify(collection) + Path.sep + slugify(id) + '.html',
       };
 
     } else {
       echoData.pages[pageKey].items[id] = {
         name: toTitleCase(id),
         data: fileData,
-        html: content
+        html: content,
+        slug: slugify(pageKey) + Path.sep + slugify(id) + '.html',
       };
     }
   });
