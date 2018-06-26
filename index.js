@@ -8,6 +8,7 @@ const mkdirp = require('mkdirp');
 const Globby = require('globby');
 const Beautify = require('beautify');
 const Pretty = require('pretty');
+const Cleaner = require('clean-html');
 const SortObj = require('sort-object');
 const DeepSortObj = require('deep-sort-object');
 
@@ -328,7 +329,8 @@ const registerHelpers = () => {
 		const content = !_.isFunction(template) ? Handlebars.compile(template) : template;
 
     // return beautified html with trailing whitespace removed
-		return Pretty(content(context).replace(/^\s+/, ''), echoOpts.prettyOpts);
+    return Pretty(content(context).replace(/^\s+/, ''), echoOpts.prettyOpts);
+    // return Pretty(content(context).replace(/^\s+/, ''));
 
 	});
 }

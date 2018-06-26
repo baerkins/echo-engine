@@ -11,6 +11,7 @@
   "devDependencies": {},
   "dependencies": {
     "beautify": "0.0.8",
+    "clean-html": "^1.5.0",
     "deep-sort-object": "^1.0.2",
     "globby": "^8.0.1",
     "gray-matter": "^3.1.1",
